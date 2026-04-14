@@ -1,14 +1,22 @@
+"use client";
+
 import { useChat } from "@ai-sdk/react";
-import { useRef, useEffect, useState } from "react";
+import { TextStreamChatTransport } from "ai";
+import { useRef, useEffect, useState, useCallback } from "react";
 
 export function Chat() {
-  const { messages, sendMessage, stop, status, setMessages } = useChat();
   const [input, setInput] = useState("");
+
+  const { messages, sendMessage, stop, status, error, setMessages } = useChat({
+    transport: new TextStreamChatTransport({
+      api: "/api/chat",
+    }),
+  });
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const isLoading = status === "streaming" || status === "submitted";
+  const isStreaming = status === "streaming" || status === "submitted";
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -17,25 +25,21 @@ export function Chat() {
 
   // Auto-focus textarea
   useEffect(() => {
-    if (!isLoading && textareaRef.current) {
+    if (!isStreaming && textareaRef.current) {
       textareaRef.current.focus();
     }
-  }, [isLoading]);
+  }, [isStreaming]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading) return;
-
-    sendMessage({ role: "user", content: input });
-    setInput("");
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
       e.preventDefault();
-      handleSubmit(e);
-    }
-  };
+      if (!input.trim()) return;
+
+      sendMessage({ text: input });
+      setInput("");
+    },
+    [input, sendMessage],
+  );
 
   const clearChat = () => {
     setMessages([]);
@@ -73,14 +77,37 @@ export function Chat() {
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[80%] rounded-lg px-4 py-2 ${message.role === "user" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-900"}`}>
-                  <p className="whitespace-pre-wrap text-sm">{(message as any).content}</p>
+                  <p className="whitespace-pre-wrap text-sm">
+                    {message.parts?.map((part, i) =>
+                      part.type === "text" ? <span key={i}>{part.text}</span> : null
+                    )}
+                  </p>
+
+                  {/*<p className="whitespace-pre-wrap text-sm">
+                       {message.parts?.map((part, i) =>
+                         part.type === "text" ? (
+                           <span key={i}>
+                             {i === 0 ? (part.text || "").replace(/^\n/, "") : part.text}
+                           </span>
+                         ) : null
+                       )}
+                     </p>*/}
+
                 </div>
               </div>
             ))}
           </>
         )}
 
-        {isLoading && (
+        {error && (
+          <div className="flex justify-center">
+            <div className="max-w-[80%] rounded-lg px-4 py-2 bg-red-100 text-red-900">
+              <p className="text-sm">{error.message}</p>
+            </div>
+          </div>
+        )}
+
+        {isStreaming && (
           <div className="flex justify-start">
             <div className="bg-gray-100 rounded-lg px-4 py-2">
               <div className="flex space-x-1">
@@ -102,13 +129,18 @@ export function Chat() {
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit(e);
+              }
+            }}
             placeholder="Type message... (Shift+Enter for new line)"
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none min-h-[44px] max-h-32"
-            disabled={isLoading}
+            disabled={isStreaming}
             rows={1}
           />
-          {isLoading ? (
+          {isStreaming ? (
             <button type="button" onClick={stop} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium h-[44px]">
               Stop
             </button>

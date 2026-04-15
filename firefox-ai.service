@@ -1,0 +1,16 @@
+# cat ~/.config/systemd/user/firefox-ai.service
+[Unit]
+Description=FirefoxAI
+After=network.target
+
+[Service]
+WorkingDirectory=/home/mod/firefox-ai
+User=mod
+Environment="NODE_ENV=production"
+ExecStart=/home/mod/.bun/bin/bun run start
+
+[Install]
+WantedBy=multi-user.target
+
+# systemctl --user enable firefox-ai.service
+# systemctl --user start firefox-ai.service

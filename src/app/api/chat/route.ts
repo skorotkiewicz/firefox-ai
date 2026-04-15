@@ -37,7 +37,7 @@ export async function POST(req: Request) {
       model: provider(model || process.env.LLM_MODEL || "local"),
       system: getSystemPrompt(),
       messages: modelMessages,
-      stopSequences: ["ees", "<|eot_id|>", "<|end|>", "</s>"],
+      stopSequences: ["<|im_end|>", "<|eot_id|>", "<|end|>", "</s>"],
     });
 
     return result.toTextStreamResponse();

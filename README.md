@@ -8,6 +8,8 @@ A minimal AI chat interface for Firefox sidebar. Clean, fast, and history-free.
 cp .env.example .env
 # Edit .env with your LLM endpoint
 bun dev
+# or just
+python3 server.py
 ```
 
 ## Configure
@@ -27,3 +29,6 @@ LLM_SYSTEM_PROMPT=You are a helpful assistant.
 2. Search for `browser.ml.chat.hideLocalhost` and set to **false**
 3. Set `browser.ml.chat.provider` to your URL (e.g., `http://localhost:5173`)
 4. Open Firefox AI chat sidebar – your local endpoint appears in the dropdown
+
+## Cool model for having fun
+https://huggingface.co/mradermacher/gemma-4-E2B-it-heretic-ara-GGUF

@@ -12,10 +12,21 @@
   "dependencies": {
     "@ai-sdk/openai-compatible": "^2.0.41",
     "@ai-sdk/react": "^3.0.161",
+    "@phosphor-icons/react": "^2.1.10",
+    "@types/react-syntax-highlighter": "^15.5.13",
     "ai": "^6.0.159",
+    "hast": "^1.0.0",
     "next": "16.2.3",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "react-keyed-flatten-children": "^5.1.2",
+    "react-syntax-highlighter": "^16.1.1",
+    "rehype-react": "^8.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.2",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.0",

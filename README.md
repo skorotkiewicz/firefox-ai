@@ -1,36 +1,29 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Firefox AI Sidebar
 
-## Getting Started
+A minimal AI chat interface for Firefox sidebar. Clean, fast, and history-free.
 
-First, run the development server:
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
+cp .env.example .env
+# Edit .env with your LLM endpoint
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Configure
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Edit `.env`:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```env
+LLM_BASE_URL=https://api.example.com/v1
+LLM_API_KEY=your-key
+LLM_MODEL=kimi
+LLM_SYSTEM_PROMPT=You are a helpful assistant.
+```
 
-## Learn More
+## Firefox Sidebar Setup
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Navigate to `about:config` in Firefox
+2. Search for `browser.ml.chat.hideLocalhost` and set to **false**
+3. Set `browser.ml.chat.provider` to your URL (e.g., `http://localhost:5173`)
+4. Open Firefox AI chat sidebar – your local endpoint appears in the dropdown

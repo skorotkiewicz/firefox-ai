@@ -38,9 +38,17 @@ export function Chat() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Auto-focus textarea
+  // Auto-send query parameter on mount
   useEffect(() => {
-    if (!isSubmitted  && textareaRef.current) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const query = urlParams.get("q");
+    if (query) {
+      sendMessage({ text: decodeURIComponent(query) });
+    }
+  }, [sendMessage]);
+
+  useEffect(() => {
+    if (!isSubmitted && textareaRef.current) {
       textareaRef.current.focus();
     }
   }, [isStreaming]);
@@ -122,8 +130,8 @@ export function Chat() {
             {messages.map((message) => {
               const textContent =
                 message.parts
-                  ?.filter((part: any) => part.type === "text")
-                  .map((part: any) => part.text)
+                  ?.filter((part) => part.type === "text")
+                  .map((part) => part.text)
                   .join("") || "";
               return (
                 <div

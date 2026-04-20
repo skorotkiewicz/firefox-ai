@@ -11,8 +11,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Generator
 
+import httpx
 import litert_lm
 import uvicorn
+from bs4 import BeautifulSoup
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,8 +26,88 @@ DEFAULT_SYSTEM_PROMPT = (
     "- You are LLM named Bubby.\n"
     "- Do not attempt to guess or elaborate. Do not speculate or fill in gaps.\n"
     "- Be concise.\n"
-    "- You can see images and hear audio that the user shares with you."
+    "- You can see images and hear audio that the user shares with you.\n"
+    "- After using tools, always respond to the user with what you found."
+    # "You are Bubby, a concise and direct Large Language Model. You must never speculate, guess, or fill in gaps in information. Be brief in all responses. You can process images and audio that are shared with you. Do not offer suggestions or ask if you can do anything else. After using tools, always respond to the user with what you found."
 )
+
+
+def web_browser(url: str) -> str:
+    """Fetch and extract text from a webpage."""
+    try:
+        # Clean up litert_lm special tokens
+        url = url.strip().replace('<|"|>', "").strip()
+
+        with httpx.Client(timeout=10, follow_redirects=True) as client:
+            response = client.get(url)
+            soup = BeautifulSoup(response.content, "html.parser")
+            for tag in soup(["script", "style"]):
+                tag.decompose()
+            return soup.get_text(separator="\n", strip=True)[:8000]
+    except Exception as e:
+        return f"Error: {e}"
+
+
+def get_weather(location: str) -> str:
+    """Get current weather for a location."""
+    try:
+        clean_location = location.strip().replace(" ", "+").replace('<|"|>', "")
+        url = f"https://wttr.in/{clean_location}?format=3"
+
+        with httpx.Client(timeout=10) as client:
+            response = client.get(url)
+            return response.text.strip()
+    except Exception as e:
+        return f"Error: {e}"
+
+
+# tool_results = {}
+# def web_search(query: str) -> str:
+#     """Search and store result."""
+#     try:
+#         clean_query = query.strip().replace('<|"|>', "").replace(" ", "+")
+#         url = f"https://html.duckduckgo.com/html/?q={clean_query}"
+#         headers = {
+#             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+#         }
+
+#         with httpx.Client(timeout=10, headers=headers) as client:
+#             response = client.get(url)
+#             soup = BeautifulSoup(response.content, "html.parser")
+#             results = []
+#             for i, result in enumerate(soup.select(".result")[:3], 1):
+#                 title = result.select_one(".result__title")
+#                 snippet = result.select_one(".result__snippet")
+#                 if title and snippet:
+#                     results.append(
+#                         f"{i}. {title.get_text(strip=True)}: {snippet.get_text(strip=True)[:100]}"
+#                     )
+
+#             result_text = "\n".join(results) if results else "No results found"
+#             tool_results["search"] = result_text  # Store in global
+#             return "Search complete"  # Return simple ack
+#     except Exception as e:
+#         tool_results["search"] = f"Error: {e}"
+#         return "Search failed"
+
+
+# def chat_with_tools(messages, last_message):
+#     conv = build_conversation(messages[:-1] if messages else [])
+#     try:
+#         response = conv.send_message(last_message)
+
+#         # Check if we have tool results
+#         if "search" in tool_results:
+#             result = tool_results["search"]
+#             tool_results.clear()  # Clear for next time
+#             yield result
+#         else:
+#             # Regular text response
+#             content = response.get("content", [])
+#             if content:
+#                 yield content[0].get("text", "No response")
+#     finally:
+#         cleanup_conversation()
 
 
 def save_temp_file(data: bytes, suffix: str) -> str:
@@ -137,7 +219,15 @@ def build_conversation(messages: list[dict[str, Any]]) -> Any:
     normalized = normalize_messages(messages)
     full_messages = [{"role": "system", "content": get_system_prompt()}]
     full_messages.extend(normalized)
-    conversation = engine.create_conversation(messages=full_messages)
+
+    conversation = engine.create_conversation(
+        messages=full_messages,
+        tools=[
+            web_browser,
+            get_weather,
+            # web_search,
+        ],
+    )
     conversation.__enter__()
     return conversation
 
@@ -223,6 +313,21 @@ async def chat(
                 content.append({"type": "image", "path": os.path.abspath(image_path)})
 
             # Add text prompt based on what's present
+            # Check if user query likely needs tools
+            # last_msg_content = (
+            #     messages_list[-1].get("content", "") if messages_list else ""
+            # )
+            # needs_tools = any(
+            #     keyword in last_msg_content.lower()
+            #     for keyword in [
+            #         "search",
+            #         "weather",
+            #         "browse",
+            #         "find",
+            #         "lookup",
+            #     ]
+            # )
+            # # Build last message
             if audio_path and image_path:
                 content.append(
                     {
@@ -258,6 +363,18 @@ async def chat(
             try:
                 for chunk in generate_stream(conv, last_message):
                     yield chunk.encode("utf-8")
+
+                # if needs_tools:
+                #     # Use blocking mode for tools
+                #     for chunk in chat_with_tools(messages_list, last_message):
+                #         yield chunk.encode("utf-8")
+                # else:
+                #     # Use streaming for simple chat
+                #     conv = build_conversation(
+                #         messages_list[:-1] if messages_list else []
+                #     )
+                #     for chunk in generate_stream(conv, last_message):
+                #         yield chunk.encode("utf-8")
             finally:
                 cleanup_conversation()
                 # Cleanup temp files

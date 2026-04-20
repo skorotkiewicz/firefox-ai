@@ -15,6 +15,7 @@ import litert_lm
 import uvicorn
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_MODEL = "gemma-4-E2B-it.litertlm"
@@ -180,6 +181,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+# app.mount("/static", StaticFiles(directory=str(ROOT)), name="static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/")

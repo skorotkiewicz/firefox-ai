@@ -1,11 +1,13 @@
 import httpx
 from bs4 import BeautifulSoup
 
+from ._utils import sanitize_url
+
 
 def web_browser(url: str) -> str:
     """Fetch and extract text from a webpage."""
     try:
-        url = url.strip().replace('<|"|>', "").strip()
+        url = sanitize_url(url)
         with httpx.Client(timeout=10, follow_redirects=True) as client:
             response = client.get(url)
             soup = BeautifulSoup(response.content, "html.parser")

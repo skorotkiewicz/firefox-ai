@@ -1,6 +1,8 @@
 import httpx
 from bs4 import BeautifulSoup
 
+from ._utils import sanitize_url
+
 
 def web_search(query: str, num_results: int = 8) -> str:
     """
@@ -15,7 +17,7 @@ def web_search(query: str, num_results: int = 8) -> str:
     """
     try:
         # Clean and validate query
-        clean_query = query.strip().replace('<|"|>', "").strip()
+        clean_query = sanitize_url(query)
         if not clean_query:
             return "Error: Empty search query"
 

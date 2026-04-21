@@ -1,6 +1,8 @@
 import httpx
 from bs4 import BeautifulSoup
 
+from ._utils import sanitize_url
+
 
 def web_fetch(url: str, format: str = "markdown") -> str:
     """
@@ -18,7 +20,7 @@ def web_fetch(url: str, format: str = "markdown") -> str:
 
     try:
         # Validate URL
-        url = url.strip().replace('<|"|>', "").strip()
+        url = sanitize_url(url)
         if not url.startswith(("http://", "https://")):
             return "Error: URL must start with http:// or https://"
 

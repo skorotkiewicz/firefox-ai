@@ -240,9 +240,8 @@ async def generate_stream_async(
     t.start()
 
     # Pull items from the thread-safe queue asynchronously
-    loop = asyncio.get_event_loop()
     while True:
-        item = await loop.run_in_executor(None, q.get)
+        item = await asyncio.get_running_loop().run_in_executor(None, q.get)
         if item is None:
             break
         yield item
@@ -272,6 +271,11 @@ async def root():
     return HTMLResponse(content=(ROOT / "index.html").read_text())
 
 
+@app.get("/api/health")
+async def health():
+    return {"status": "ok", "engine_loaded": engine is not None}
+
+
 @app.post("/api/chat")
 async def chat(
     messages: str = Form(...),
@@ -289,38 +293,43 @@ async def chat(
 
     history = messages_list[:-1] if messages_list else []
 
+    # Extract user's actual text message
+    last = messages_list[-1] if messages_list else {"role": "user", "content": ""}
+    user_text = ""
+    if isinstance(last.get("content"), str):
+        user_text = last["content"]
+    elif isinstance(last.get("content"), list):
+        user_text = " ".join(
+            p.get("text", "")
+            for p in last["content"]
+            if isinstance(p, dict) and p.get("type") == "text"
+        )
+
     if audio_path or image_path:
         content: Any = []
         if audio_path:
             content.append({"type": "audio", "path": os.path.abspath(audio_path)})
         if image_path:
             content.append({"type": "image", "path": os.path.abspath(image_path)})
+        # Include user's actual text with media context
         if audio_path and image_path:
             content.append(
                 {
                     "type": "text",
-                    "text": "The user shared audio and an image. Respond to what they said and describe what you see.",
+                    "text": user_text
+                    or "Respond to what they said and describe what you see.",
                 }
             )
         elif audio_path:
             content.append(
-                {
-                    "type": "text",
-                    "text": "The user shared audio. Respond to what they said.",
-                }
+                {"type": "text", "text": user_text or "Respond to what they said."}
             )
         else:
             content.append(
-                {
-                    "type": "text",
-                    "text": "The user shared an image. Describe what you see.",
-                }
+                {"type": "text", "text": user_text or "Describe what you see."}
             )
     else:
-        last = (
-            messages_list[-1] if messages_list else {"role": "user", "content": "Hello"}
-        )
-        content = last.get("content", "Hello")
+        content = user_text or "Hello"
 
     last_message = {"role": "user", "content": content}
 

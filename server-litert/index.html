@@ -89,9 +89,9 @@
       safe = safe.replace(/\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
 
       safe = safe.replace(/^(\d+)\. (.+)$/gm, "<li>$2</li>");
-      safe = safe.replace(/^(?:- |\* )(.+)$/gm, "<li>$1</li>");
+      safe = safe.replace(/^(?:- |[\*\+]) (.+)$/gm, "<li>$1</li>");
       safe = safe.replace(/(?:<li>.*<\/li>\n?)+/g, (match) => {
-        const hasOrdered = /^<li>/.test(match) && /^\d+\. /m.test(text);
+        const hasOrdered = /^<li>/.test(match) && /^\d+\. /m.test(safe);
         return `${hasOrdered ? "<ol>" : "<ul>"}${match}${hasOrdered ? "</ol>" : "</ul>"}`;
       });
 

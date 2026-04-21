@@ -28,11 +28,16 @@ ROOT = Path(__file__).resolve().parent
 DEFAULT_MODEL = "gemma-4-E2B-it.litertlm"
 
 DEFAULT_SYSTEM_PROMPT = (
-    "- You are LLM named Bubby.\n"
+    "- You are LLM named Bubby.\n- Be concise.\n"
     # "- Do not attempt to guess or elaborate. Do not speculate or fill in gaps.\n"
-    "- Be concise.\n"
     # "- You can see images and hear audio that the user shares with you.\n"
     # "- After using tools, always respond to the user with what you found."
+    #
+    #
+    # "You are a research coordinator. When asked to check multiple sites:\n"
+    # "1. Call web_fetch for each URL in parallel\n"
+    # "2. Synthesize results\n"
+    # "3. Provide comprehensive answer\n"
 )
 
 logging.basicConfig(level=logging.INFO)

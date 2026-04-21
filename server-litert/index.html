@@ -299,7 +299,7 @@
               } else if (evt.type === "error") {
                 assistant.content += `\n⚠️ ${evt.text}`;
               }
-            } catch (e) {
+            } catch (_e) {
               // Ignore non-JSON or malformed lines
             }
           }
@@ -318,7 +318,7 @@
             } else if (evt.type === "error") {
               assistant.content += `\n⚠️ ${evt.text}`;
             }
-          } catch (e) {}
+          } catch (_e) {}
         }
         render();
 
@@ -401,6 +401,14 @@
       render();
       resizeTextarea();
       resetInputFocus();
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const query = urlParams.get("q");
+      if (query) {
+        const decodedQuery = decodeURIComponent(query);
+        state.input = decodedQuery;
+        sendMessage(decodedQuery);
+      }
     });
   </script>
 </body>

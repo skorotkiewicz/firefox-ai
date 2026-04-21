@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""Local chat server using litert_lm."""
+"""Local chat server using litert_lm with real token streaming."""
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
+import queue
 import tempfile
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any, AsyncGenerator
 
 import httpx
 import litert_lm
@@ -24,20 +28,23 @@ DEFAULT_MODEL = "gemma-4-E2B-it.litertlm"
 
 DEFAULT_SYSTEM_PROMPT = (
     "- You are LLM named Bubby.\n"
-    "- Do not attempt to guess or elaborate. Do not speculate or fill in gaps.\n"
+    # "- Do not attempt to guess or elaborate. Do not speculate or fill in gaps.\n"
     "- Be concise.\n"
-    "- You can see images and hear audio that the user shares with you.\n"
-    "- After using tools, always respond to the user with what you found."
-    # "You are Bubby, a concise and direct Large Language Model. You must never speculate, guess, or fill in gaps in information. Be brief in all responses. You can process images and audio that are shared with you. Do not offer suggestions or ask if you can do anything else. After using tools, always respond to the user with what you found."
+    # "- You can see images and hear audio that the user shares with you.\n"
+    # "- After using tools, always respond to the user with what you found."
 )
+
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("bubby")
+
+
+# ── tools ────────────────────────────────────────────────────────────────
 
 
 def web_browser(url: str) -> str:
     """Fetch and extract text from a webpage."""
     try:
-        # Clean up litert_lm special tokens
         url = url.strip().replace('<|"|>', "").strip()
-
         with httpx.Client(timeout=10, follow_redirects=True) as client:
             response = client.get(url)
             soup = BeautifulSoup(response.content, "html.parser")
@@ -53,7 +60,6 @@ def get_weather(location: str) -> str:
     try:
         clean_location = location.strip().replace(" ", "+").replace('<|"|>', "")
         url = f"https://wttr.in/{clean_location}?format=3"
-
         with httpx.Client(timeout=10) as client:
             response = client.get(url)
             return response.text.strip()
@@ -61,65 +67,51 @@ def get_weather(location: str) -> str:
         return f"Error: {e}"
 
 
-# tool_results = {}
-# def web_search(query: str) -> str:
-#     """Search and store result."""
-#     try:
-#         clean_query = query.strip().replace('<|"|>', "").replace(" ", "+")
-#         url = f"https://html.duckduckgo.com/html/?q={clean_query}"
-#         headers = {
-#             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-#         }
-
-#         with httpx.Client(timeout=10, headers=headers) as client:
-#             response = client.get(url)
-#             soup = BeautifulSoup(response.content, "html.parser")
-#             results = []
-#             for i, result in enumerate(soup.select(".result")[:3], 1):
-#                 title = result.select_one(".result__title")
-#                 snippet = result.select_one(".result__snippet")
-#                 if title and snippet:
-#                     results.append(
-#                         f"{i}. {title.get_text(strip=True)}: {snippet.get_text(strip=True)[:100]}"
-#                     )
-
-#             result_text = "\n".join(results) if results else "No results found"
-#             tool_results["search"] = result_text  # Store in global
-#             return "Search complete"  # Return simple ack
-#     except Exception as e:
-#         tool_results["search"] = f"Error: {e}"
-#         return "Search failed"
+def web_search(query: str) -> str:
+    """Search the web and return results."""
+    try:
+        clean_query = query.strip().replace('<|"|>', "").replace(" ", "+")
+        url = f"https://html.duckduckgo.com/html/?q={clean_query}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        with httpx.Client(timeout=10, headers=headers) as client:
+            response = client.get(url)
+            soup = BeautifulSoup(response.content, "html.parser")
+            results = []
+            for i, result in enumerate(soup.select(".result")[:3], 1):
+                title = result.select_one(".result__title")
+                snippet = result.select_one(".result__snippet")
+                if title and snippet:
+                    results.append(
+                        f"{i}. {title.get_text(strip=True)}: "
+                        f"{snippet.get_text(strip=True)[:200]}"
+                    )
+            return "\n".join(results) if results else "No results found"
+    except Exception as e:
+        return f"Error: {e}"
 
 
-# def chat_with_tools(messages, last_message):
-#     conv = build_conversation(messages[:-1] if messages else [])
-#     try:
-#         response = conv.send_message(last_message)
-
-#         # Check if we have tool results
-#         if "search" in tool_results:
-#             result = tool_results["search"]
-#             tool_results.clear()  # Clear for next time
-#             yield result
-#         else:
-#             # Regular text response
-#             content = response.get("content", [])
-#             if content:
-#                 yield content[0].get("text", "No response")
-#     finally:
-#         cleanup_conversation()
+# ── helpers ──────────────────────────────────────────────────────────────
 
 
 def save_temp_file(data: bytes, suffix: str) -> str:
-    """Save bytes to a temporary file and return the path."""
     tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
     tmp.write(data)
     tmp.close()
     return tmp.name
 
 
+def cleanup_files(*paths: str | None) -> None:
+    for p in paths:
+        if p:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+
+
 engine = None
-conversation = None
 
 
 def load_dotenv() -> None:
@@ -212,52 +204,88 @@ def normalize_messages(messages: list[dict[str, Any]]) -> list[dict[str, str]]:
     return normalized
 
 
-def build_conversation(messages: list[dict[str, Any]]) -> Any:
-    global conversation
+# ── real async streaming generator ───────────────────────────────────────
+
+
+async def generate_stream_async(
+    messages: list[dict[str, Any]],
+    last_message: dict[str, Any],
+) -> AsyncGenerator[str, None]:
+    """
+    Uses send_message_async to yield real tokens as they are generated.
+    Runs the litert_lm synchronous iterator in a background thread,
+    passing tokens to FastAPI via a thread-safe queue.
+    """
     if engine is None:
         raise RuntimeError("Engine not initialized")
+
     normalized = normalize_messages(messages)
-    full_messages = [{"role": "system", "content": get_system_prompt()}]
+    full_messages: list[dict[str, Any]] = [
+        {"role": "system", "content": get_system_prompt()}
+    ]
     full_messages.extend(normalized)
 
-    conversation = engine.create_conversation(
-        messages=full_messages,
-        tools=[
-            web_browser,
-            get_weather,
-            # web_search,
-        ],
-    )
-    conversation.__enter__()
-    return conversation
+    q: queue.Queue[str | None] = queue.Queue()
+
+    class _Handler(litert_lm.ToolEventHandler):
+        def approve_tool_call(self, tool_call: dict[str, Any]) -> bool:
+            fn = tool_call.get("function", {}).get("name", "tool")
+            log.info("Tool call approved: %s", fn)
+            q.put(json.dumps({"type": "tool_use", "name": fn}) + "\n")
+            return True
+
+        def process_tool_response(
+            self, tool_response: dict[str, Any]
+        ) -> dict[str, Any]:
+            log.info("Tool response: %s", str(tool_response)[:200])
+            return tool_response
+
+    handler = _Handler()
+
+    def run_in_thread() -> None:
+        try:
+            with engine.create_conversation(
+                messages=full_messages,
+                tools=[web_browser, get_weather, web_search],
+                tool_event_handler=handler,
+            ) as conv:
+                # MessageIterator is a synchronous iterator — use plain `for`
+                for chunk in conv.send_message_async(last_message):
+                    text = ""
+                    if isinstance(chunk, str):
+                        text = chunk
+                    elif isinstance(chunk, dict):
+                        for item in chunk.get("content", []):
+                            if isinstance(item, dict) and item.get("type") == "text":
+                                text += item.get("text", "")
+                        if not text:
+                            text = chunk.get("text", "")
+
+                    if text:
+                        q.put(json.dumps({"type": "text", "text": text}) + "\n")
+
+        except Exception as e:
+            log.exception("Error in streaming thread")
+            q.put(json.dumps({"type": "error", "text": str(e)}) + "\n")
+        finally:
+            q.put(None)  # Sentinel to signal end of stream
+
+    # Start the background thread
+    t = threading.Thread(target=run_in_thread, daemon=True)
+    t.start()
+
+    # Pull items from the thread-safe queue asynchronously
+    loop = asyncio.get_event_loop()
+    while True:
+        item = await loop.run_in_executor(None, q.get)
+        if item is None:
+            break
+        yield item
+
+    t.join(timeout=5)
 
 
-def cleanup_conversation() -> None:
-    global conversation
-    if conversation:
-        conversation.__exit__(None, None, None)
-        conversation = None
-
-
-def generate_stream(
-    conversation: Any, message: dict[str, Any]
-) -> Generator[str, None, None]:
-    """Generate true streaming response from the model using send_message_async."""
-    try:
-        # Use send_message_async for true token-by-token streaming
-        for chunk in conversation.send_message_async(message):
-            if isinstance(chunk, dict):
-                content = chunk.get("content", [])
-                if content and isinstance(content, list):
-                    for item in content:
-                        if item.get("type") == "text":
-                            text = item.get("text", "")
-                            if text:
-                                yield text
-            elif isinstance(chunk, str):
-                yield chunk
-    except Exception as e:
-        yield f"[Error: {e}]"
+# ── FastAPI app ──────────────────────────────────────────────────────────
 
 
 @asynccontextmanager
@@ -271,8 +299,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-
-# app.mount("/static", StaticFiles(directory=str(ROOT)), name="static")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
@@ -287,127 +313,79 @@ async def chat(
     audio: UploadFile | None = File(None),
     image: UploadFile | None = File(None),
 ):
-    """Chat endpoint supporting text, audio, and image inputs."""
-    messages_list = json.loads(messages)
+    messages_list: list[dict[str, Any]] = json.loads(messages)
+    audio_path: str | None = None
+    image_path: str | None = None
 
-    # Save uploaded files to temp
-    audio_path = None
-    image_path = None
+    if audio:
+        audio_path = save_temp_file(await audio.read(), ".wav")
+    if image:
+        image_path = save_temp_file(await image.read(), ".jpg")
 
-    try:
-        if audio:
-            audio_data = await audio.read()
-            audio_path = save_temp_file(audio_data, ".wav")
-        if image:
-            image_data = await image.read()
-            image_path = save_temp_file(image_data, ".jpg")
+    history = messages_list[:-1] if messages_list else []
 
-        def stream():
-            conv = build_conversation(messages_list[:-1] if messages_list else [])
+    if audio_path or image_path:
+        content: Any = []
+        if audio_path:
+            content.append({"type": "audio", "path": os.path.abspath(audio_path)})
+        if image_path:
+            content.append({"type": "image", "path": os.path.abspath(image_path)})
+        if audio_path and image_path:
+            content.append(
+                {
+                    "type": "text",
+                    "text": "The user shared audio and an image. Respond to what they said and describe what you see.",
+                }
+            )
+        elif audio_path:
+            content.append(
+                {
+                    "type": "text",
+                    "text": "The user shared audio. Respond to what they said.",
+                }
+            )
+        else:
+            content.append(
+                {
+                    "type": "text",
+                    "text": "The user shared an image. Describe what you see.",
+                }
+            )
+    else:
+        last = (
+            messages_list[-1] if messages_list else {"role": "user", "content": "Hello"}
+        )
+        content = last.get("content", "Hello")
 
-            # Build multimodal content
-            content = []
-            if audio_path:
-                content.append({"type": "audio", "path": os.path.abspath(audio_path)})
-            if image_path:
-                content.append({"type": "image", "path": os.path.abspath(image_path)})
+    last_message = {"role": "user", "content": content}
 
-            # Add text prompt based on what's present
-            # Check if user query likely needs tools
-            # last_msg_content = (
-            #     messages_list[-1].get("content", "") if messages_list else ""
-            # )
-            # needs_tools = any(
-            #     keyword in last_msg_content.lower()
-            #     for keyword in [
-            #         "search",
-            #         "weather",
-            #         "browse",
-            #         "find",
-            #         "lookup",
-            #     ]
-            # )
-            # # Build last message
-            if audio_path and image_path:
-                content.append(
-                    {
-                        "type": "text",
-                        "text": "The user shared audio and an image. Respond to what they said and describe what you see.",
-                    }
-                )
-            elif audio_path:
-                content.append(
-                    {
-                        "type": "text",
-                        "text": "The user shared audio. Respond to what they said.",
-                    }
-                )
-            elif image_path:
-                content.append(
-                    {
-                        "type": "text",
-                        "text": "The user shared an image. Describe what you see.",
-                    }
-                )
-            else:
-                # No files, use last message text
-                last_msg = (
-                    messages_list[-1]
-                    if messages_list
-                    else {"role": "user", "content": "Hello"}
-                )
-                content = last_msg.get("content", "Hello")
+    async def stream() -> AsyncGenerator[bytes, None]:
+        try:
+            async for chunk in generate_stream_async(history, last_message):
+                yield chunk.encode("utf-8")
+        finally:
+            cleanup_files(audio_path, image_path)
 
-            last_message = {"role": "user", "content": content}
-
-            try:
-                for chunk in generate_stream(conv, last_message):
-                    yield chunk.encode("utf-8")
-
-                # if needs_tools:
-                #     # Use blocking mode for tools
-                #     for chunk in chat_with_tools(messages_list, last_message):
-                #         yield chunk.encode("utf-8")
-                # else:
-                #     # Use streaming for simple chat
-                #     conv = build_conversation(
-                #         messages_list[:-1] if messages_list else []
-                #     )
-                #     for chunk in generate_stream(conv, last_message):
-                #         yield chunk.encode("utf-8")
-            finally:
-                cleanup_conversation()
-                # Cleanup temp files
-                for p in [audio_path, image_path]:
-                    if p and os.path.exists(p):
-                        os.unlink(p)
-
-        return StreamingResponse(stream(), media_type="text/plain")
-    except Exception as e:
-        # Cleanup on error
-        for p in [audio_path, image_path]:
-            if p and os.path.exists(p):
-                os.unlink(p)
-        raise
+    return StreamingResponse(
+        stream(),
+        media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 def main():
     port = int(os.environ.get("PORT", "3000"))
     host = os.environ.get("HOST", "0.0.0.0")
-
     ssl_keyfile = os.environ.get("SSL_KEYFILE")
     ssl_certfile = os.environ.get("SSL_CERTFILE")
-
     print(f"Starting server on {host}:{port}")
     if ssl_keyfile and ssl_certfile:
         print(f"SSL enabled: {ssl_certfile}")
-
     uvicorn.run(
-        app,
-        host=host,
-        port=port,
-        ssl_keyfile=ssl_keyfile,
-        ssl_certfile=ssl_certfile,
+        app, host=host, port=port, ssl_keyfile=ssl_keyfile, ssl_certfile=ssl_certfile
     )
 
 

@@ -272,15 +272,55 @@
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         const assistant = state.messages[state.messages.length - 1];
+        let buffer = "";
 
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
-          assistant.content += decoder.decode(value, { stream: true });
+
+          // Append received chunks to the buffer
+          buffer += decoder.decode(value, { stream: true });
+
+          // Split buffer by newlines to process NDJSON
+          const lines = buffer.split("\n");
+          // Keep the last potentially incomplete line in the buffer
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const evt = JSON.parse(line);
+              if (evt.type === "text") {
+                assistant.content += evt.text;
+              } else if (evt.type === "tool_use") {
+                // Show a tool usage indicator in the text bubble
+                assistant.content += `🔍 Using ${evt.name}...\n\n`;
+              } else if (evt.type === "error") {
+                assistant.content += `\n⚠️ ${evt.text}`;
+              }
+            } catch (e) {
+              // Ignore non-JSON or malformed lines
+            }
+          }
+          // Update the DOM after processing chunks
           render();
         }
 
-        assistant.content += decoder.decode();
+        // Process any remaining buffer after stream closes
+        if (buffer.trim()) {
+          try {
+            const evt = JSON.parse(buffer);
+            if (evt.type === "text") {
+              assistant.content += evt.text;
+            } else if (evt.type === "tool_use") {
+              assistant.content += `🔍 Using ${evt.name}...\n\n`;
+            } else if (evt.type === "error") {
+              assistant.content += `\n⚠️ ${evt.text}`;
+            }
+          } catch (e) {}
+        }
+        render();
+
       } catch (err) {
         if (err.name !== "AbortError") {
           state.error = err.message || "An unexpected error occurred. Please try again later.";

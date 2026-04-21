@@ -166,9 +166,10 @@
 
         return `
             <div class="message-row assistant">
+            ${message.content.length > 0 ? (`
               <div class="bubble assistant">
               <div class="assistant-content">${renderMarkdown(message.content)}</div>
-              </div>
+              </div>`) : ""}
             </div>
           `;
       }).join("");

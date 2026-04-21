@@ -15,13 +15,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncGenerator
 
-import httpx
 import litert_lm
 import uvicorn
-from bs4 import BeautifulSoup
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+
+# from tool import get_weather, web_browser, web_fetch, web_search
+from tool import get_weather, web_fetch, web_search
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_MODEL = "gemma-4-E2B-it.litertlm"
@@ -36,60 +37,6 @@ DEFAULT_SYSTEM_PROMPT = (
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("bubby")
-
-
-# ── tools ────────────────────────────────────────────────────────────────
-
-
-def web_browser(url: str) -> str:
-    """Fetch and extract text from a webpage."""
-    try:
-        url = url.strip().replace('<|"|>', "").strip()
-        with httpx.Client(timeout=10, follow_redirects=True) as client:
-            response = client.get(url)
-            soup = BeautifulSoup(response.content, "html.parser")
-            for tag in soup(["script", "style"]):
-                tag.decompose()
-            return soup.get_text(separator="\n", strip=True)[:8000]
-    except Exception as e:
-        return f"Error: {e}"
-
-
-def get_weather(location: str) -> str:
-    """Get current weather for a location."""
-    try:
-        clean_location = location.strip().replace(" ", "+").replace('<|"|>', "")
-        url = f"https://wttr.in/{clean_location}?format=3"
-        with httpx.Client(timeout=10) as client:
-            response = client.get(url)
-            return response.text.strip()
-    except Exception as e:
-        return f"Error: {e}"
-
-
-def web_search(query: str) -> str:
-    """Search the web and return results."""
-    try:
-        clean_query = query.strip().replace('<|"|>', "").replace(" ", "+")
-        url = f"https://html.duckduckgo.com/html/?q={clean_query}"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-        with httpx.Client(timeout=10, headers=headers) as client:
-            response = client.get(url)
-            soup = BeautifulSoup(response.content, "html.parser")
-            results = []
-            for i, result in enumerate(soup.select(".result")[:3], 1):
-                title = result.select_one(".result__title")
-                snippet = result.select_one(".result__snippet")
-                if title and snippet:
-                    results.append(
-                        f"{i}. {title.get_text(strip=True)}: "
-                        f"{snippet.get_text(strip=True)[:200]}"
-                    )
-            return "\n".join(results) if results else "No results found"
-    except Exception as e:
-        return f"Error: {e}"
 
 
 # ── helpers ──────────────────────────────────────────────────────────────
@@ -244,9 +191,22 @@ async def generate_stream_async(
 
     def run_in_thread() -> None:
         try:
+            if engine is None:
+                q.put(
+                    json.dumps({"type": "error", "text": "Engine not initialized"})
+                    + "\n"
+                )
+                q.put(None)
+                return
+
             with engine.create_conversation(
                 messages=full_messages,
-                tools=[web_browser, get_weather, web_search],
+                tools=[
+                    # web_browser,
+                    get_weather,
+                    web_search,
+                    web_fetch,
+                ],
                 tool_event_handler=handler,
             ) as conv:
                 # MessageIterator is a synchronous iterator — use plain `for`

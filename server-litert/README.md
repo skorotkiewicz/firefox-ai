@@ -5,7 +5,7 @@ A local chat server using Google's Gemma-4 model via LiteRT-LM with real token s
 ## Features
 
 - **Real streaming** - Token-by-token streaming via `send_message_async()`
-- **Tool support** - Web browser, weather, and search tools
+- **Tool support** - Web search, URL fetch, and weather lookup
 - **Multimodal** - Text, image, and audio input
 - **Web UI** - Clean interface with markdown rendering
 - **Local AI** - Runs entirely on your machine (GPU recommended)
@@ -66,9 +66,10 @@ Uses `send_message_async()` with a thread-safe queue to stream real tokens from 
 
 ### Tools
 Three tools available via `ToolEventHandler`:
-- `web_browser(url)` - Fetch and extract webpage text
+- `web_search(query, num_results=8)` - Search DuckDuckGo and return results
+- `web_fetch(url, format="markdown")` - Fetch URL content in markdown/text/html
 - `get_weather(location)` - Get weather from wttr.in
-- `web_search(query)` - Search DuckDuckGo and return results
+<!--- `web_browser(url)` - Fetch and extract webpage text-->
 
 ### Multimodal
 Supports images and audio by including them in the message content array:
@@ -85,6 +86,11 @@ content = [
 ```
 server-litert/
 ├── server.py          # FastAPI server
+├── tool/              # LLM-callable tools
+│   ├── __init__.py
+│   ├── web_search.py
+│   ├── web_fetch.py
+│   └── get_weather.py
 ├── index.html         # Web UI
 ├── static/
 │   └── style.css      # Styles

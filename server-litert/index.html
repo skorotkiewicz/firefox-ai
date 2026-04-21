@@ -91,7 +91,7 @@
       safe = safe.replace(/^(\d+)\. (.+)$/gm, "<li>$2</li>");
       safe = safe.replace(/^(?:- |[\*\+]) (.+)$/gm, "<li>$1</li>");
       safe = safe.replace(/(?:<li>.*<\/li>\n?)+/g, (match) => {
-        const hasOrdered = /^<li>/.test(match) && /^\d+\. /m.test(safe);
+        const hasOrdered = /^<li>/.test(match) && /^\d+\. /m.test(text);
         return `${hasOrdered ? "<ol>" : "<ul>"}${match}${hasOrdered ? "</ol>" : "</ul>"}`;
       });
 

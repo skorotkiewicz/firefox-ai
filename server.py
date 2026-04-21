@@ -47,7 +47,7 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("buddy")
 
 
-# ── helpers ──────────────────────────────────────────────────────────────
+# ── helpers
 
 
 def save_temp_file(data: bytes, suffix: str) -> str:
@@ -159,7 +159,7 @@ def normalize_messages(messages: list[dict[str, Any]]) -> list[dict[str, str]]:
     return normalized
 
 
-# ── real async streaming generator ───────────────────────────────────────
+# ── real async streaming generator
 
 
 async def generate_stream_async(
@@ -252,7 +252,7 @@ async def generate_stream_async(
     t.join(timeout=5)
 
 
-# ── FastAPI app ──────────────────────────────────────────────────────────
+# ── FastAPI app
 
 
 @asynccontextmanager

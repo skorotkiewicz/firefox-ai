@@ -6,8 +6,9 @@ A local chat server using Google's Gemma-4 model via LiteRT-LM with real token s
 
 - **Real streaming** - Token-by-token streaming via `send_message_async()`
 - **Tool support** - Web search, URL fetch, and weather lookup
-- **Multimodal** - Text, image, and audio input
-- **Web UI** - Clean interface with markdown rendering
+- **Multimodal** - Text, image, and audio input with user text preservation
+- **Web UI** - Clean interface with theme-aware markdown rendering
+- **Firefox sidebar** - URL parameter support (`?q=`) for instant queries
 - **Local AI** - Runs entirely on your machine (GPU recommended)
 
 ## Quick Start
@@ -43,6 +44,12 @@ Or place the model file in the project directory.
 
 ## API
 
+### GET /api/health
+
+Health check endpoint.
+
+**Response:** `{"status": "ok", "engine_loaded": true/false}`
+
 ### POST /api/chat
 
 Chat endpoint with NDJSON streaming response.
@@ -72,12 +79,12 @@ Three tools available via `ToolEventHandler`:
 <!--- `web_browser(url)` - Fetch and extract webpage text-->
 
 ### Multimodal
-Supports images and audio by including them in the message content array:
+Supports images and audio while **preserving the user's actual text message**:
 ```python
 content = [
     {"type": "image", "path": "/path/to/image.jpg"},
     {"type": "audio", "path": "/path/to/audio.wav"},
-    {"type": "text", "text": "Describe this"}
+    {"type": "text", "text": "What's in this picture and what did they say?"}
 ]
 ```
 
@@ -85,15 +92,17 @@ content = [
 
 ```
 server-litert/
-├── server.py          # FastAPI server
+├── server.py          # FastAPI server with streaming
 ├── tool/              # LLM-callable tools
-│   ├── __init__.py
-│   ├── web_search.py
-│   ├── web_fetch.py
-│   └── get_weather.py
-├── index.html         # Web UI
+│   ├── __init__.py    # Tool exports
+│   ├── _utils.py      # Shared utilities (URL sanitization)
+│   ├── web_search.py  # DuckDuckGo search
+│   ├── web_fetch.py   # URL content fetcher
+│   ├── get_weather.py # Weather lookup
+│   └── web_browser.py # Available but disabled
+├── index.html         # Web UI with Firefox sidebar support
 ├── static/
-│   └── style.css      # Styles
+│   └── style.css      # Theme-aware styles
 └── pyproject.toml     # Dependencies
 ```
 

@@ -14,7 +14,7 @@ const provider = createOpenAICompatible({
 const getSystemPrompt = () => {
   const currentTime = getCurrentTime();
   const basePrompt = process.env.LLM_SYSTEM_PROMPT || [
-    "- You are LLM named Bubby.",
+    "- You are LLM named Buddy.",
     "- Do not attempt to guess or elaborate. Do not speculate or fill in gaps.",
     "- Be concise.",
   ];

@@ -27,12 +27,15 @@ from tool import get_weather, web_fetch, web_search
 ROOT = Path(__file__).resolve().parent
 DEFAULT_MODEL = "gemma-4-E2B-it.litertlm"
 
+BASE_SYSTEM_PROMPT = "You are a multimodal model. You can directly process and understand input from images and audio."
+
 DEFAULT_SYSTEM_PROMPT = (
-    "- You are LLM named Bubby.\n- Be concise.\n"
-    # "- Do not attempt to guess or elaborate. Do not speculate or fill in gaps.\n"
-    # "- You can see images and hear audio that the user shares with you.\n"
-    # "- After using tools, always respond to the user with what you found."
-    #
+    "IDENTITY: You are Buddy, an advanced Large Language Model. "
+    "STYLE: Be concise in all responses. Prioritize directness and accuracy."
+    "CORE DIRECTIVES (CRITICAL):"
+    "1. Factuality: Do not guess, speculate, or fill in gaps in information. If you do not know the answer, state clearly that you do not know."
+    "2. Tool Use: If you decide to use a tool, respond *only* with the information retrieved from the tool. Do not add commentary or elaboration."
+    "3. Grounding: After using any tool, your final response must be based *only* on the information returned by that tool."
     #
     # "You are a research coordinator. When asked to check multiple sites:\n"
     # "1. Call web_fetch for each URL in parallel\n"
@@ -41,7 +44,7 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("bubby")
+log = logging.getLogger("buddy")
 
 
 # ── helpers ──────────────────────────────────────────────────────────────
@@ -130,7 +133,7 @@ def get_current_time() -> str:
 
 def get_system_prompt() -> str:
     base_prompt = os.environ.get("LLM_SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT)
-    return f"{base_prompt}\n\nCurrent date and time: {get_current_time()}"
+    return f"{BASE_SYSTEM_PROMPT}\n{base_prompt}\nCurrent date and time: {get_current_time()}"
 
 
 def normalize_messages(messages: list[dict[str, Any]]) -> list[dict[str, str]]:

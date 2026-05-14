@@ -23,6 +23,13 @@ uv run server.py
 
 Server starts at `http://localhost:3000`
 
+## Firefox Sidebar Setup
+
+1. Navigate to `about:config` in Firefox
+2. Search for `browser.ml.chat.hideLocalhost` and set to **false**
+3. Set `browser.ml.chat.provider` to your URL (e.g., `http://localhost:5173`)
+4. Open Firefox AI chat sidebar – your local endpoint appears in the dropdown
+
 ## Model
 
 First run will download the model (~4GB) from HuggingFace:
@@ -30,6 +37,10 @@ First run will download the model (~4GB) from HuggingFace:
 - File: `gemma-4-E2B-it.litertlm`
 
 Or place the model file in the project directory.
+
+<details>
+  <summary>Details</summary>
+
 
 ## Environment Variables
 
@@ -105,6 +116,8 @@ server-litert/
 │   └── style.css      # Theme-aware styles
 └── pyproject.toml     # Dependencies
 ```
+
+</details>
 
 ## License
 

@@ -38,6 +38,8 @@ First run will download the model (~4GB) from HuggingFace:
 
 Or place the model file in the project directory.
 
+---
+
 <details>
   <summary>Details</summary>
 
